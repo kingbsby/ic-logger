@@ -9,14 +9,17 @@ import Option "mo:base/Option";
 
 import Logger "mo:ic-logger/Logger";
 
-shared(msg) actor class TextLogger() {
+shared(msg) actor class TextLogger(startLines : Nat) {
   let OWNER = msg.caller;
 
-  stable var state : Logger.State<Text> = Logger.new<Text>(0, null);
+  stable var state : Logger.State<Text> = Logger.new<Text>(startLines, null);
   let logger = Logger.Logger<Text>(state);
 
   // Principals that are allowed to log messages.
   stable var allowed : [Principal] = [OWNER];
+
+  var currLines : Nat= 0;
+  let MAX_LINES : Nat = 50;
 
   // Set allowed principals.
   public shared (msg) func allow(ids: [Principal]) {
@@ -25,9 +28,18 @@ shared(msg) actor class TextLogger() {
   };
 
   // Add a set of messages to the log.
-  public shared (msg) func append(msgs: [Text]) {
+  public shared (msg) func append(msgs: [Text]) : async [Text] {
     assert(Option.isSome(Array.find(allowed, func (id: Principal) : Bool { msg.caller == id })));
-    logger.append(msgs);
+    var t = (List.nil<Text>(), List.nil<Text>());
+    if (currLines + msgs.size() < MAX_LINES){
+      logger.append(msgs);
+      currLines += msgs.size();
+    } else {
+        let msgsList = List.fromArray<Text>(msgs);
+        t := List.split<Text>(MAX_LINES - currLines, msgsList);
+        logger.append(List.toArray(t.0));
+    };
+    List.toArray(t.1)
   };
 
   // Return log stats, where:
@@ -39,13 +51,13 @@ shared(msg) actor class TextLogger() {
 
   // Return the messages between from and to indice (inclusive).
   public shared query (msg) func view(from: Nat, to: Nat) : async Logger.View<Text> {
-    assert(msg.caller == OWNER);
+    // assert(msg.caller == OWNER);
     logger.view(from, to)
   };
 
   // Drop past buckets (oldest first).
-  public shared (msg) func pop_buckets(num: Nat) {
-    assert(msg.caller == OWNER);
-    logger.pop_buckets(num)
-  }
+  // public shared (msg) func pop_buckets(num: Nat) {
+  //   assert(msg.caller == OWNER);
+  //   logger.pop_buckets(num)
+  // }
 }
